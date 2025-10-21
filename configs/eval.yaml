@@ -1,8 +1,0 @@
-model_name: "Qwen/Qwen2.5-1.5B"
-max_length: 256
-
-mlflow:
-  enable: false
-  tracking_uri: TBD
-  exp_name: "qwen-politi-finetune-v1"
-  results: "results/baseline.json"

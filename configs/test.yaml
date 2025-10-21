@@ -1,0 +1,26 @@
+# --- Configuations test parameters---
+seed : 13
+
+data:
+  training: "data/small_train.json"
+  testing: "data/micro_test.json"
+  max_length: 1024 # 2048 
+
+# model: { model_name: "Qwen/Qwen3-1.7B-FP8" }    # Note - Will require GPUs with compute capability >= 8.9 (4090/H100 and up). Local system is at 8.6
+# model: { model_name: "Qwen/Qwen2.5-7B-Instruct" }   # Desired model
+model:
+  model_name: "Qwen/Qwen2.5-0.5B" # testing model
+
+prompt:
+  template: |
+    Classify the following statement with one label only from: pants-fire, false, mostly-false, half-true, mostly-true, true.
+    Statement: {statement}
+    Answer with only the label, nothing else:
+
+# MLflow paramters
+mlflow:
+  enable: true
+  tracking_uri: "sqlite:///mlflow.db"
+  exp_name: "qwen-politi-finetune-v1"
+  run_name: null
+  artifact_path: "finetuned-model"

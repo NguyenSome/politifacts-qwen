@@ -1,0 +1,24 @@
+# --- Configuations base parameters---
+seed : 7
+
+data:
+  training: "data/train.json"
+  testing: "data/test.json"
+  max_length: 2048
+
+model:
+  model_name: "Qwen/Qwen2.5-7B-Instruct"
+
+prompt:
+  template: |
+    Classify the following statement with one label only from: pants-fire, false, mostly-false, half-true, mostly-true, true.
+    Statement: {statement}
+    Answer with only the label, nothing else:
+
+# MLflow paramters
+mlflow:
+  enable: true
+  tracking_uri: "sqlite:///mlflow.db"
+  exp_name: "qwen-politi-finetune-v1"
+  run_name: null
+  artifact_path: "finetuned-model"
