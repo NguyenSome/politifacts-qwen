@@ -10,3 +10,22 @@ build/
 .pytest_cache/
 .coverage
 .env
+ENV_SETUP.md
+spot-spec.json
+
+# Runtime/generated directories
+mlflow.db
+mlruns/
+logs/
+models/
+results/
+*.db
+
+# Data directory (uncomment if datasets are private)
+# data/
+
+# HuggingFace cache
+.hf-cache/
+.ruff_cache/
+.uv-cache/
+.cache/

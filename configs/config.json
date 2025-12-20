@@ -52,6 +52,10 @@
                 "stderr",
                 "file"
             ]
+        },
+        "datasets": {
+            "level": "INFO",
+            "propagate": false
         }
     }
 }

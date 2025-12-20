@@ -1,16 +1,17 @@
 from __future__ import annotations
-from pathlib import Path
+
 from datetime import datetime
-from typing import Optional, Union
-from pydantic import BaseModel, Field, AnyUrl
+from pathlib import Path
+
 import yaml
+from pydantic import AnyUrl, BaseModel, Field
 
 
 class MLflowSettings(BaseModel):
     enable: bool = False
-    tracking_uri: Optional[Union[AnyUrl, str]] = None
+    tracking_uri: AnyUrl | str | None = None
     exp_name: str = "default"
-    run_name: Optional[str] = None
+    run_name: str | None = None
     artifact_path: str = "artifacts"
 
     def resolved_run_name(self, prefix="finetune") -> str:
@@ -27,13 +28,13 @@ class AppSettings(BaseModel):
     mlflow: MLflowSettings = Field(default_factory=MLflowSettings)
 
     @classmethod
-    def load_from_yaml(cls, yaml_path: str = "configs/base.yaml") -> "AppSettings":
+    def load_from_yaml(cls, yaml_path: str = "configs/base.yaml") -> AppSettings:
         """Load settings from YAML file."""
         path = Path(yaml_path)
         if not path.exists():
             return cls()
-        
+
         with path.open("r", encoding="utf-8") as f:
             yaml_config = yaml.safe_load(f) or {}
-        
+
         return cls(**yaml_config)

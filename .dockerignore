@@ -1,0 +1,59 @@
+# IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+.pre-commit-config.yaml
+.ruff_cache/
+.pre-commit-cache/
+.coverage
+ENV_SETUP.md
+spot-spec.json
+
+# OS + misc
+.DS_Store
+.cache/
+
+# Docker & build
+Dockerfile.old
+docker-compose.yml
+*.tar
+*.tgz
+
+# Python junk
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.whl
+.mypy_cache/
+dist/
+build/
+
+# Envs
+.venv/
+.env
+.env.*
+
+# Model training
+results/
+models/
+runs/
+wandb/
+mlflow.db
+mlruns/
+logs/
+*.db
+cache/
+.hf-cache/
+.uv-cache/
+.cache/
+
+# Notebooks & outputs
+notebooks/
+scripts/
+.ipynb_checkpoints/
+*.ipynb
+*.log

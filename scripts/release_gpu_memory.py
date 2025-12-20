@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import gc
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 
 import torch
 

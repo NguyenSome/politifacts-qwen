@@ -4,10 +4,10 @@ seed : 7
 data:
   training: "data/train.json"
   testing: "data/test.json"
-  max_length: 2048
+  max_length: 1024
 
 model:
-  model_name: "Qwen/Qwen2.5-7B-Instruct"
+  model_name: "Qwen/Qwen2.5-0.5B"
 
 prompt:
   template: |

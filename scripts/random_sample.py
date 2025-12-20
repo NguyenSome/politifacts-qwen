@@ -1,9 +1,10 @@
-import json, random
 import argparse
+import json
+import random
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n", default = int(50))
+parser.add_argument("--n", default = 50)
 args = parser.parse_args()
 
 train_path = Path("data/train.json").resolve()

@@ -16,24 +16,23 @@ import logging
 import logging.config
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-import yaml
 import mlflow
 import numpy as np
 import torch
-from datasets import load_dataset, DatasetDict
-from sklearn.metrics import f1_score, cohen_kappa_score
+import yaml
+from datasets import DatasetDict, load_dataset
+from peft import LoraConfig, TaskType, get_peft_model
+from sklearn.metrics import cohen_kappa_score, f1_score
 from transformers import (
-    AutoTokenizer,
     AutoModelForCausalLM,
-    EarlyStoppingCallback,
-    TrainingArguments,
-    Trainer,
+    AutoTokenizer,
     DataCollatorForSeq2Seq,
+    EarlyStoppingCallback,
+    Trainer,
+    TrainingArguments,
 )
-from peft import LoraConfig, get_peft_model, TaskType
-
 
 LOGGER = logging.getLogger("my_app")
 
@@ -63,7 +62,7 @@ def setup_logging() -> None:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def _read_config(path: str | Path) -> Dict[str, Any]:
+def _read_config(path: str | Path) -> dict[str, Any]:
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Config file not found: {p}")
@@ -77,7 +76,7 @@ def _read_config(path: str | Path) -> Dict[str, Any]:
     return data
 
 
-def _get_cfg(path: str | Path = "configs/base.yaml") -> Dict[str, Any]:
+def _get_cfg(path: str | Path = "configs/base.yaml") -> dict[str, Any]:
     cfg = _read_config(path)
     # Normalize/guard expected sections
     cfg.setdefault("data", {})
@@ -89,7 +88,7 @@ def _get_cfg(path: str | Path = "configs/base.yaml") -> Dict[str, Any]:
     return cfg
 
 
-def _get_prompt_template(cfg: Dict[str, Any]) -> str:
+def _get_prompt_template(cfg: dict[str, Any]) -> str:
     default_tmpl = (
         "Classify the following statement with one label only, "
         "chosen from: pants-fire, false, mostly-false, half-true, mostly-true, true.\n"
@@ -100,7 +99,7 @@ def _get_prompt_template(cfg: Dict[str, Any]) -> str:
     return prompt_section.get("template", default_tmpl)
 
 
-def load_model(cfg: Dict[str, Any]):
+def load_model(cfg: dict[str, Any]):
     LOGGER.info("Loading base model %s", cfg["model"].get("model_name", "<missing>"))
 
     model_name = cfg["model"].get("model_name")
@@ -153,17 +152,17 @@ def build_tokenize_fn(tokenizer, prompt_template: str, max_length: int):
     if tokenizer.pad_token is None and tokenizer.eos_token is not None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    def tokenize_batch(batch: Dict[str, List[Any]]) -> Dict[str, List[List[int]]]:
-        statements: List[str] = [str(s).strip() for s in batch["statement"]]
-        verdicts: List[str] = [str(v).strip() for v in batch["verdict"]]
+    def tokenize_batch(batch: dict[str, list[Any]]) -> dict[str, list[list[int]]]:
+        statements: list[str] = [str(s).strip() for s in batch["statement"]]
+        verdicts: list[str] = [str(v).strip() for v in batch["verdict"]]
 
-        input_ids_all: List[List[int]] = []
-        labels_all: List[List[int]] = []
+        input_ids_all: list[list[int]] = []
+        labels_all: list[list[int]] = []
 
         orig_side = tokenizer.truncation_side
         tokenizer.truncation_side = "left"
 
-        for s, v in zip(statements, verdicts):
+        for s, v in zip(statements, verdicts, strict=False):
             text = prompt_template.format(statement=s)
             target = " " + v
 
@@ -193,7 +192,7 @@ def build_tokenize_fn(tokenizer, prompt_template: str, max_length: int):
     return tokenize_batch
 
 
-def data_processing(cfgs: Dict[str, Any], tokenizer, prompt_template: str) -> DatasetDict:
+def data_processing(cfgs: dict[str, Any], tokenizer, prompt_template: str) -> DatasetDict:
     ds = load_dataset("json", data_files=cfgs["data"]["training"])
     split = ds["train"].train_test_split(test_size=0.15, seed=cfgs.get("seed", 42))
     dataset = DatasetDict({
@@ -236,8 +235,8 @@ def build_metrics_computer(tokenizer):
         labels = np.array(labels)
         pred_ids = np.array(pred_ids)
 
-        y_true: List[str] = []
-        y_pred: List[str] = []
+        y_true: list[str] = []
+        y_pred: list[str] = []
 
         for i in range(labels.shape[0]):
             mask = labels[i] != -100
@@ -276,20 +275,20 @@ def build_metrics_computer(tokenizer):
     return compute_metrics
 
 
-def write_json(path: Path, payload: Dict[str, Any]) -> None:
+def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     LOGGER.info("Persisted metrics to %s", path)
 
 
-def _resolve_training_args(cfgs: Dict[str, Any], out_dir: Path) -> Dict[str, Any]:
+def _resolve_training_args(cfgs: dict[str, Any], out_dir: Path) -> dict[str, Any]:
     tcfg = cfgs.get("trainer", {}) or {}
 
     # Map YAML's eval_strategy to HF's evaluation_strategy
     evaluation_strategy = tcfg.get("evaluation_strategy", tcfg.get("eval_strategy", "epoch"))
 
-    args: Dict[str, Any] = dict(
+    args: dict[str, Any] = dict(
         output_dir=str(out_dir),
         num_train_epochs=int(tcfg.get("num_train_epochs", 1)),
         per_device_train_batch_size=int(tcfg.get("per_device_train_batch_size", 2)),
@@ -312,7 +311,7 @@ def _resolve_training_args(cfgs: Dict[str, Any], out_dir: Path) -> Dict[str, Any
     return args
 
 
-def _resolved_run_name(mlcfg: Dict[str, Any]) -> str:
+def _resolved_run_name(mlcfg: dict[str, Any]) -> str:
     rn = mlcfg.get("run_name")
     if rn:
         return str(rn)
@@ -320,7 +319,7 @@ def _resolved_run_name(mlcfg: Dict[str, Any]) -> str:
     return f"finetune-{ts}"
 
 
-def _setup_mlflow_if_enabled(mlcfg: Dict[str, Any]) -> None:
+def _setup_mlflow_if_enabled(mlcfg: dict[str, Any]) -> None:
     if not mlcfg.get("enable", False):
         return
     try:
@@ -334,7 +333,7 @@ def _setup_mlflow_if_enabled(mlcfg: Dict[str, Any]) -> None:
         LOGGER.warning("Failed to set up MLflow: %s", e)
 
 
-def train(model, tokenizer, cfgs: Dict[str, Any]):
+def train(model, tokenizer, cfgs: dict[str, Any]):
     prompt_tmpl = _get_prompt_template(cfgs)
     dataset = data_processing(cfgs, tokenizer, prompt_tmpl)
     compute_metrics = build_metrics_computer(tokenizer)
@@ -357,7 +356,7 @@ def train(model, tokenizer, cfgs: Dict[str, Any]):
     # Early stopping with default patience
     trainer.add_callback(EarlyStoppingCallback())
 
-    numeric_metrics: Dict[str, float] = {}
+    numeric_metrics: dict[str, float] = {}
     mlcfg = cfgs.get("mlflow", {}) or {}
     _setup_mlflow_if_enabled(mlcfg)
 

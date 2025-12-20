@@ -1,0 +1,1 @@
+{"level": "ERROR", "message": "Training failed: name 'mlflow' is not defined", "timestamp": "2025-12-20T13:51:42.776481+00:00", "logger": "my_app", "module": "finetune", "function": "train", "line": 534, "thread_name": "MainThread"}

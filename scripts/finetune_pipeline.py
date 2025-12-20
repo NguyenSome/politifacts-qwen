@@ -12,18 +12,23 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import mlflow
 import numpy as np
+import paths
 import torch
 import yaml
 from datasets import DatasetDict, load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from sklearn.metrics import cohen_kappa_score, f1_score
-from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback, Trainer, TrainingArguments
-
-import paths
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    EarlyStoppingCallback,
+    Trainer,
+    TrainingArguments,
+)
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(
@@ -31,7 +36,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-CANONICAL_LABELS: Tuple[str, ...] = (
+CANONICAL_LABELS: tuple[str, ...] = (
     "pants-fire",
     "false",
     "mostly-false",
@@ -46,9 +51,9 @@ class MLflowSettings:
     """Configuration for optional MLflow tracking."""
 
     enable: bool = False
-    tracking_uri: Optional[str] = None
+    tracking_uri: str | None = None
     experiment_name: str = "qwen-finetune"
-    run_name: Optional[str] = None
+    run_name: str | None = None
     artifact_path: str = "finetuned-model"
 
     def resolved_run_name(self) -> str:
@@ -66,7 +71,7 @@ class TrainingConfig:
     max_length: int
     data_path: Path
     train_filename: str = "train.json"
-    validation_filename: Optional[str] = None
+    validation_filename: str | None = None
     validation_split: float = 0.15
     seed: int = 42
     num_epochs: int = 3
@@ -91,7 +96,7 @@ class TrainingConfig:
     lora_r: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.05
-    target_modules: Tuple[str, ...] = (
+    target_modules: tuple[str, ...] = (
         "q_proj",
         "k_proj",
         "v_proj",
@@ -100,8 +105,8 @@ class TrainingConfig:
         "up_proj",
         "down_proj",
     )
-    use_bf16: Optional[bool] = None
-    use_fp16: Optional[bool] = None
+    use_bf16: bool | None = None
+    use_fp16: bool | None = None
     early_stopping_patience: int = 2
     mlflow: MLflowSettings = field(default_factory=MLflowSettings)
 
@@ -109,7 +114,7 @@ class TrainingConfig:
 def load_training_config(config_path: Path) -> TrainingConfig:
     """Load and validate configuration from a YAML file."""
 
-    with open(config_path, "r", encoding="utf-8") as handle:
+    with open(config_path, encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
     required_keys = ("model_name", "max_length", "data_path")
@@ -127,7 +132,7 @@ def load_training_config(config_path: Path) -> TrainingConfig:
         artifact_path=mlflow_raw.get("artifact_path", "finetuned-model"),
     )
 
-    def resolve_path(value: Optional[str], default: Optional[Path] = None) -> Path:
+    def resolve_path(value: str | None, default: Path | None = None) -> Path:
         if value:
             path = Path(value)
             if not path.is_absolute():
@@ -257,7 +262,7 @@ def build_tokenizer_fn(config: TrainingConfig, tokenizer) -> Any:
 
     max_length = config.max_length
 
-    def tokenize_example(example: Dict[str, Any]) -> Dict[str, Any]:
+    def tokenize_example(example: dict[str, Any]) -> dict[str, Any]:
         statement = str(example["statement"]).strip()
         verdict = str(example["verdict"]).strip()
 
@@ -304,7 +309,7 @@ def prepare_datasets(config: TrainingConfig, tokenizer) -> DatasetDict:
     """Load source data, split, and apply tokenization."""
 
     train_path = config.data_path / config.train_filename
-    data_files: Dict[str, str] = {"train": str(train_path)}
+    data_files: dict[str, str] = {"train": str(train_path)}
 
     if config.validation_filename:
         val_path = config.data_path / config.validation_filename
@@ -342,7 +347,7 @@ def prepare_datasets(config: TrainingConfig, tokenizer) -> DatasetDict:
 def compute_metrics_builder(eval_dataset, tokenizer):
     """Return a metric computation function bound to dataset and tokenizer."""
 
-    def compute_metrics(predictions_and_labels: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
+    def compute_metrics(predictions_and_labels: tuple[np.ndarray, np.ndarray]) -> dict[str, float]:
         predictions, labels = predictions_and_labels
 
         if predictions.ndim == 3:
@@ -352,8 +357,8 @@ def compute_metrics_builder(eval_dataset, tokenizer):
 
         total = len(pred_ids)
         correct = 0
-        preds_normalized: List[str] = []
-        trues_normalized: List[str] = []
+        preds_normalized: list[str] = []
+        trues_normalized: list[str] = []
 
         for idx in range(total):
             sample = eval_dataset[idx]
@@ -432,7 +437,7 @@ def ensure_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def write_metrics_to_disk(metrics: Dict[str, float], path: Path) -> None:
+def write_metrics_to_disk(metrics: dict[str, float], path: Path) -> None:
     """Persist evaluation metrics in JSON for downstream dashboards."""
 
     ensure_directory(path.parent)
@@ -459,7 +464,7 @@ def log_params_to_mlflow(config: TrainingConfig) -> None:
     mlflow.log_params(params)
 
 
-def run_training(config: TrainingConfig, config_path: Path) -> Dict[str, float]:
+def run_training(config: TrainingConfig, config_path: Path) -> dict[str, float]:
     """Execute the end-to-end training loop."""
 
     set_seed(config.seed)
@@ -485,7 +490,7 @@ def run_training(config: TrainingConfig, config_path: Path) -> Dict[str, float]:
         early_stopping = EarlyStoppingCallback(early_stopping_patience=config.early_stopping_patience)
         trainer.add_callback(early_stopping)
 
-    numeric_metrics: Dict[str, float] = {}
+    numeric_metrics: dict[str, float] = {}
 
     if config.mlflow.enable:
         if config.mlflow.tracking_uri:
