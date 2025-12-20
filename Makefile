@@ -47,10 +47,6 @@ attach:
 
 mount:
 		sudo mkdir -p /mnt/ebs && sudo mount /dev/nvme2n1 /mnt/ebs
-
-ssh_login:
-		aws ecr get-login-password --region us-west-2 \
-		| docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.us-west-2.amazonaws.com
 		
 # ----- Container Configs -----
 PROJECT_DIR := $(shell pwd)
