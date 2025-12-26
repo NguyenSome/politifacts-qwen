@@ -22,7 +22,6 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     DataCollatorForSeq2Seq,
-    EarlyStoppingCallback,
     Trainer,
     TrainerCallback,
     TrainingArguments,
@@ -260,6 +259,12 @@ def build_tokenize_fn(tokenizer, prompt: str, max_length: int):
     return tokenize_batch
 
 
+def preprocess_logits_for_metrics(logits, labels):
+    if isinstance(logits, tuple):
+        logits = logits[0]
+    return logits.argmax(dim=-1)
+
+
 def data_processing(cfgs, tokenizer, split_name: str = "training"):
     """
     Load JSON dataset, tokenize it, drop raw text columns, and return tokenized DatasetDict
@@ -426,6 +431,8 @@ def _manual_training_params() -> dict[str, Any]:
     return {
         "output_dir": Path("results/ar-qwen").resolve(),
         "logging_steps": 100,
+        "saving_steps": 100,
+        "eval_steps": 100,
     }
 
 
@@ -435,7 +442,9 @@ def train(model, tokenizer, cfgs: dict[str, Any], training_runtime: dict[str, An
     dataset = data_processing(cfgs, tokenizer, "training")
     compute_metrics = build_metrics_computer(tokenizer)
     collator = DataCollatorForSeq2Seq(
-        tokenizer=tokenizer, label_pad_token_id=-100, pad_to_multiple_of=8
+        tokenizer=tokenizer,
+        label_pad_token_id=-100,
+        pad_to_multiple_of=8,
     )
 
     out_dir = training_runtime["output_dir"]
@@ -449,13 +458,16 @@ def train(model, tokenizer, cfgs: dict[str, Any], training_runtime: dict[str, An
         num_train_epochs=2,
         per_device_train_batch_size=2,
         per_device_eval_batch_size=1,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=16,
         learning_rate=2e-4,
         weight_decay=0.01,
         lr_scheduler_type="cosine",
         warmup_ratio=0.1,
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        eval_strategy="no",
+        # eval_steps=training_runtime["eval_steps"],
+        eval_accumulation_steps=4,
+        save_strategy="steps",
+        save_steps=training_runtime["saving_steps"],
         save_total_limit=2,
         logging_steps=training_runtime["logging_steps"],
         tf32=True,
@@ -469,7 +481,7 @@ def train(model, tokenizer, cfgs: dict[str, Any], training_runtime: dict[str, An
         run_name=mlflow_cfg.resolved_run_name(),
         remove_unused_columns=True,
         seed=cfgs["seed"],
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model="macro_f1",
         greater_is_better=True,
     )
@@ -481,10 +493,11 @@ def train(model, tokenizer, cfgs: dict[str, Any], training_runtime: dict[str, An
         eval_dataset=dataset["validation"],
         compute_metrics=compute_metrics,
         data_collator=collator,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         args=args,
         callbacks=[
             MemUsageCallback(),
-            EarlyStoppingCallback(early_stopping_patience=2),
+            # EarlyStoppingCallback(early_stopping_patience=2),
         ],
     )
 

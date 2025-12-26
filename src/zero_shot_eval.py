@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 import warnings
 from datetime import date
 from pathlib import Path
@@ -8,8 +9,9 @@ import numpy as np
 import torch
 import yaml
 from datasets import load_dataset
+from peft import PeftModel
 from sklearn.metrics import cohen_kappa_score, f1_score
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.filterwarnings(
@@ -50,15 +52,65 @@ def predict_label(model, tok, claim: str) -> str:
     return gen
 
 
-def zero_shot_baseline(model, tok, data, N):
+def load_model_variant(cfg, variant: str = "base"):
+    base_name = cfg["model"]["model_name"]
+    adapter_dir = Path("results/ar-qwen/final_model").resolve()
+
+    tok = AutoTokenizer.from_pretrained(
+        base_name, use_fast=True, trust_remote_code=True
+    )
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+
+    # Use same quantization for both variants (apples-to-apples)
+    compute_dtype = (
+        torch.bfloat16
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+        else torch.float16
+    )
+    bnb_cfg = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=compute_dtype,
+    )
+
+    base = AutoModelForCausalLM.from_pretrained(
+        base_name,
+        device_map="auto",
+        quantization_config=bnb_cfg,
+        trust_remote_code=True,
+        attn_implementation="sdpa",
+    )
+    base.eval()
+
+    if variant == "tuned":
+        mdl = PeftModel.from_pretrained(base, str(adapter_dir))
+        mdl.eval()
+        return mdl, tok
+
+    if variant == "base":
+        return base, tok
+
+
+def zero_shot_baseline(
+    model,
+    tok,
+    data,
+    N,
+    variant: str = "base",
+    log_every: int = 0,
+):
     rows = []
     y_true: list[str] = []
     y_pred: list[str] = []
 
-    for _i, ex in enumerate(data.select(range(N))):
+    start = time.perf_counter()
+    for i, ex in enumerate(data.select(range(N))):
         try:
             test_lab = ex["verdict"]
             pred_lab = predict_label(model, tok, ex["statement"])
+            pred_lab = pred_lab.strip().lower().strip(".,:;!\"'()[]{}")
             true_id = label2id.get(test_lab, -1)
             pred_id = label2id.get(pred_lab, -1)
 
@@ -80,6 +132,11 @@ def zero_shot_baseline(model, tok, data, N):
             )
             y_true.append(-1)
             y_pred.append(-1)
+
+        if log_every and (i + 1) % log_every == 0:
+            elapsed = time.perf_counter() - start
+            rate = (i + 1) / elapsed if elapsed else 0.0
+            print(f"[zero_shot_eval] {i + 1}/{N} examples " f"({rate:.2f} ex/s)")
 
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
@@ -123,7 +180,7 @@ def zero_shot_baseline(model, tok, data, N):
         "qwk_on_covered": qwk,
     }
 
-    path = Path(f"results/baseline_predictions_{date_str}.jsonl").resolve()
+    path = Path(f"results/preds_{variant}_{date_str}.jsonl").resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = "a" if path else "w"
     with path.open(mode, encoding="utf-8") as fh:
@@ -136,24 +193,35 @@ def zero_shot_baseline(model, tok, data, N):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/base.yaml")
+    parser.add_argument("--model", choices=["base", "tuned"], default="base")
+    parser.add_argument("--max-examples", type=int, default=None)
+    parser.add_argument("--log-every", type=int, default=50)
     args = parser.parse_args()
 
     CONFIG_DIR = Path(args.config).resolve()
     with open(CONFIG_DIR) as f:
         cfg = yaml.safe_load(f)
 
-    tok = AutoTokenizer.from_pretrained(cfg["model"]["model_name"])
-
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg["model"]["model_name"], dtype="auto", device_map="auto"
-    )
-    model.eval()
+    print("[zero_shot_eval] loading model...")
+    model, tok = load_model_variant(cfg, args.model)
+    print("[zero_shot_eval] loading dataset...")
 
     data_path = cfg["data"]["testing"]
     ds = load_dataset("json", data_files=str(data_path))
     ds = ds["train"].select_columns(["verdict", "statement"])
 
-    metrics = zero_shot_baseline(model, tok, ds, len(ds))
+    total = len(ds)
+    if args.max_examples is not None:
+        total = min(total, args.max_examples)
+    print(f"[zero_shot_eval] running eval on {total} examples...")
+    metrics = zero_shot_baseline(
+        model,
+        tok,
+        ds,
+        total,
+        args.model,
+        log_every=args.log_every,
+    )
 
     print("finished")
     print(metrics)

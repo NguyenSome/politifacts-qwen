@@ -12,6 +12,7 @@ build/
 .env
 ENV_SETUP.md
 spot-spec.json
+ondemand-spec.json
 
 # Runtime/generated directories
 mlflow.db
@@ -20,6 +21,8 @@ logs/
 models/
 results/
 *.db
+notebooks/
+scripts/
 
 # Data directory (uncomment if datasets are private)
 # data/

@@ -4,7 +4,7 @@ seed : 13
 data:
   training: "data/small_train.json"
   testing: "data/micro_test.json"
-  max_length: 1024 # 2048 
+  max_length: 256 # 2048 
 
 # model: { model_name: "Qwen/Qwen3-1.7B-FP8" }    # Note - Will require GPUs with compute capability >= 8.9 (4090/H100 and up). Local system is at 8.6
 # model: { model_name: "Qwen/Qwen2.5-7B-Instruct" }   # Desired model

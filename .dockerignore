@@ -9,6 +9,7 @@
 .coverage
 ENV_SETUP.md
 spot-spec.json
+ondemand-spec.json
 
 # OS + misc
 .DS_Store

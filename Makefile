@@ -12,10 +12,10 @@ train_local:
 		uv run src/finetune.py --config configs/base.yaml
 
 test_local: 
-		uv run src/finetune_eval.py
+		uv run src/zero_shot_eval.py --config configs/base.yaml --model tuned
 
 test_base:
-		uv run src/zero_shot_eval.py
+		uv run src/zero_shot_eval.py --config configs/base.yaml --model base
 
 demo_model:
 		uv run src/finetune.py --config configs/test.yaml
@@ -32,6 +32,12 @@ aws_spot:
 		--instance-count 1 \
 		--type persistent \
 		--launch-specification file://spot-spec.json
+
+aws_ondemand:
+		aws ec2 run-instances \
+		--region $(REGION) \
+		--count 1 \
+		--cli-input-json file://ondemand-spec.json
 
 ecr_login:
 		aws ecr get-login-password --region $(REGION) \
@@ -99,7 +105,6 @@ mlflow_ui: prepare
 	  $(IMAGE) python -m mlflow ui \
 	  --backend-store-uri $(CTR_MLRUNS) \
 	  --host 0.0.0.0 --port 5000
-
 
 shell: prepare
 	docker run --rm -it --gpus all $(RUN_SYS) $(RUN_ENV) $(RUN_VOL) \
