@@ -1,13 +1,14 @@
-# --- Configuations test parameters---
-seed : 13
+# Smoke test: Qwen2.5-0.5B on the tiny splits.
+# Qwen2.5-7B-Instruct and Qwen3-1.7B-FP8 were out of reach on this machine
+# (FP8 wants compute capability >= 8.9; this GPU is 8.6).
+# LoRA and the training schedule are hardcoded in src/finetune.py.
+seed: 13
 
 data:
   training: "data/small_train.json"
   testing: "data/micro_test.json"
-  max_length: 256 # 2048 
+  max_length: 256
 
-# model: { model_name: "Qwen/Qwen3-1.7B-FP8" }    # Note - Will require GPUs with compute capability >= 8.9 (4090/H100 and up). Local system is at 8.6
-# model: { model_name: "Qwen/Qwen2.5-7B-Instruct" }   # Desired model
 model:
   model_name: "Qwen/Qwen2.5-0.5B" # testing model
 
@@ -17,7 +18,6 @@ prompt:
     Statement: {statement}
     Answer with only the label, nothing else:
 
-# MLflow paramters
 mlflow:
   enable: true
   tracking_uri: "sqlite:///mlflow.db"

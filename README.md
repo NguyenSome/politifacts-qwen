@@ -1,136 +1,116 @@
-# Qwen2.5 Fact-Checking Classifier (PolitiFact) 🛰️
+# Qwen2.5 Fact-Checking Classifier (PolitiFact)
 
-Pipeline for fine-tuning Qwen2.5 on the [PolitiFact](https://www.politifact.com/) fact-checking
-dataset, with:
+Can a small local causal model learn PolitiFact's 6-way truthfulness scale from the claim text alone?
 
-- Config-driven training (YAML)
-- QLoRA fine-tuning on GPU-constrained hardware
-- MLflow experiment tracking
-- Dockerized training & evaluation
-- AWS (EC2 + ECR) workflow
+Held-out accuracy on the tuned Qwen2.5-1.5B run is 0.339. That sits above the majority-class baseline (0.271) but is not a useful fact-checker.
 
-This repo is structured to showcase a workflow from dataset → training → evaluation → experiment tracking → packaged Docker
-image that can run locally or in the cloud.
+The task is a hard probe for three reasons:
 
----
+- The labels are ordinal, and the distance between neighboring ratings is not a known number.
+- The training file is imbalanced: `false` 4,480, `half-true` 2,901, `mostly-false` 2,707, `mostly-true` 2,680, `pants-fire` 2,161, `true` 1,992.
+- The model sees the claim only, without the article or citations a PolitiFact rater used.
 
-## Project Overview
+## Project overview
 
-- **Goal**: Classify political statements into discrete truthfulness labels  
-  (e.g. `pants-fire`, `false`, `mostly-false`, `half-true`, `mostly-true`, `true`).
-- **Model**: Qwen2.5-0.5B fine-tuned with QLoRA.
-- **Stack**:
-  - Python 3.11
-  - PyTorch + Transformers
-  - PEFT / QLoRA
-  - MLflow (local tracking via `mlflow.db` or remote tracking URI)
-  - Docker + NVIDIA CUDA 12.9
-  - (Optional) AWS EC2 + ECR for training in the cloud
+The goal is to classify a political statement as `pants-fire`, `false`, `mostly-false`, `half-true`, `mostly-true`, or `true`.
 
----
+The main model is Qwen2.5-1.5B, adapted with 4-bit QLoRA. The stack is Python 3.11, PyTorch, Transformers, PEFT, and MLflow. 
 
-## Quickstart (Local)
+The data is the [PolitiFact Fact Check Dataset (Kaggle / Rishabh Misra)](https://www.kaggle.com/datasets/rmisra/politifact-fact-check-dataset). The held-out files contain 16,921 train statements and 4,231 test statements. `finetune.py` then splits the train file 85% / 15% into train and validation with seed 7.
 
-**Prereqs**: Python 3.11, CUDA 12.x + NVIDIA GPU for training
+```mermaid
+flowchart LR
+  claim[Claim text] --> prompt[Prompt]
+  prompt --> train[QLoRA train]
+  train --> generate[Free generation]
+  generate --> exact[Exact label match]
+  exact --> score[Score vs majority and zero-shot]
+```
+
+## Method
+
+### Generative labels
+
+I kept the language-model head and trained the model to generate one of the six verdict strings. Loss is applied only to those verdict tokens; prompt tokens are masked with -100. An invalid string shows up as a parse failure instead of being forced into a class. 
+
+### QLoRA
+
+The frozen base is loaded in 4-bit NormalFloat4 (NF4) with double quantization. LoRA without quantization would have kept the base weights in 16-bit. Full fine-tuning would have trained every weight. The 1.5B run took about 2.3 hours (`train_runtime` ≈ 8193 s).
+
+### Training configuration
+
+Numbers below are from one reported run per system. 
+
+| Item | Value |
+| --- | --- |
+| Train / test | 16,921 / 4,231 statements |
+| Split inside `finetune.py` | 85% train / 15% validation (seed 7) |
+| Labels | 6-way ordinal truthfulness |
+| Class counts (train file) | `false` 4,480; `half-true` 2,901; `mostly-false` 2,707; `mostly-true` 2,680; `pants-fire` 2,161; `true` 1,992 |
+| QLoRA | r=8, α=16, dropout=0.05; 4-bit NF4 |
+| Schedule | 2 epochs, lr 2e-4 cosine, batch 2 × grad accum 16 (effective batch 32) |
+| Max length | 256 |
+
+### How a prediction is scored
+
+Held-out accuracy is free generation in `src/zero_shot_eval.py`. That script does not read the training prompt. `predict_label` uses its own hardcoded prompt: the same six labels, worded "one label only, chosen from" rather than the training template's "one label only from". It decodes at most 5 new tokens, strips whitespace and surrounding punctuation, and accepts the string only when that whole string is one of the six labels. Anything else is unrecognized and counts as a miss in overall accuracy.
+
+After training, `finetune.py` calls `trainer.evaluate()` once on the validation split. That path is teacher-forced: it decodes the label-token span and compares the full string. On the tuned 1.5B run, `recognized_ratio` was about 0.49, and `eval_macro_f1` was about 0.67 on that recognized subset only. That 0.67 is not comparable to held-out accuracy or to the held-out macro-F1 of 0.289.
+
+`zero_shot_eval.py` also computes ordinal mean absolute error and quadratic weighted kappa on recognized rows. Those figures were not saved, so they are not in the table below.
+
+## Results
+
+Held-out test unless a row says otherwise. Accuracy is exact label match, so a one-step miss counts the same as `pants-fire` versus `true`. The majority-class baseline is the test-set mode (`false`, 1,145 / 4,231).
+
+| System | Accuracy | Notes |
+| --- | --- | --- |
+| Majority class (`false`) | 0.271 | Baseline for this imbalance. Not a generative system. |
+| Zero-shot Qwen2.5-0.5B | 0.205 | Many malformed generations. |
+| Tuned Qwen2.5-0.5B QLoRA | 0.323 | Above the 0.5B zero-shot run and the majority class. |
+| Tuned Qwen2.5-1.5B QLoRA | 0.339 | Primary held-out run. Macro-F1 0.289. |
+| Same 1.5B run, validation | 0.338 | Teacher-forced decode after training, not the held-out generation metric. |
+
+The tuned 1.5B model was not scored zero-shot. The 0.205 row is Qwen2.5-0.5B, so the gap from 0.205 to 0.339 mixes model scale with fine-tuning.
+
+### Findings
+
+1. Fine-tuning raises accuracy over the 0.5B zero-shot run (0.205) and over the majority class (0.271). The tuned 1.5B result is still 0.339 on a 6-way task.
+2. On the tuned 1.5B test set, `half-true` was almost never predicted as itself. Those claims were mostly mapped to `mostly-true` or `mostly-false`. The per-class table for that observation was not saved.
+3. Malformed generations make the train-time recognized-only F1 incomparable to held-out accuracy.
+
+## Limitations and next steps
+
+- Score the base Qwen2.5-1.5B zero-shot on the same test file, so scale and fine-tuning can be separated.
+- Train a classification head, or an encoder classifier, on the same splits.
+- Report the ordinal MAE and quadratic weighted kappa that `zero_shot_eval.py` already computes.
+- Constrain decoding to the six label strings.
+- Repeat the run with more than one seed.
+
+## Reproducibility
+
+Prerequisites: Python 3.11, and CUDA 12.x with an NVIDIA GPU for training. Dependencies come from [pyproject.toml](pyproject.toml) and [uv.lock](uv.lock).
+
+Smoke test on the tiny splits (Qwen2.5-0.5B):
 
 ```bash
-# Install dependencies (recommended: uv)
 uv sync
+uv run src/finetune.py --config configs/test.yaml
+uv run src/zero_shot_eval.py --config configs/test.yaml --model tuned
+```
 
-# Zero-shot baseline (fast sanity check)
-uv run src/zero_shot_eval.py --config configs/test.yaml
+Full 1.5B run and held-out eval.
 
-# Fine-tune with QLoRA
+```bash
 uv run src/finetune.py --config configs/base.yaml
+uv run src/zero_shot_eval.py --config configs/base.yaml --model tuned
 ```
 
----
+Each JSONL row includes `statement`, `verdict`, `statement_originator`, `statement_source`, `statement_date`, and `factcheck_analysis_link`.
 
-## Data
+| File | Role |
+| --- | --- |
+| `data/train.json`, `data/test.json` | Full splits for `configs/base.yaml` |
+| `data/small_train.json`, `data/micro_test.json` | Tiny splits for the smoke test |
 
-The `data/` directory contains JSONL files (one record per line). Key fields include:
-`statement`, `verdict`, `statement_originator`, `statement_source`,
-`statement_date`, and `factcheck_analysis_link`.
-
-Use `small_train.json` or `micro_test.json` for quick experiments.
-
----
-
-## Configuration
-
-- `configs/base.yaml`: full training run.
-- `configs/test.yaml`: short debug run with smaller settings.
-
----
-
-## Training & Evaluation
-
-```bash
-make train_local     # QLoRA fine-tuning with configs/base.yaml
-make demo_model      # Short fine-tune run with configs/test.yaml
-make demo_base       # Zero-shot baseline with configs/test.yaml
-```
-
----
-
-## MLflow Tracking
-
-Local tracking uses `mlflow.db` by default:
-
-```bash
-make show_mlflow
-# or
-uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --host 0.0.0.0 --port 5000
-```
-
----
-
-## Docker
-
-Build and run with GPU passthrough:
-
-```bash
-make build
-make train     # runs src/finetune.py in the container
-make eval      # runs src/zero_shot_eval.py in the container
-make mlflow_ui # runs MLflow UI inside the container
-make shell     # drop into container shell
-```
-
----
-
-## AWS (Optional)
-
-AWS helpers assume `.env` variables:
-
-```bash
-make aws_spot
-make ecr_login
-make build_and_push
-```
-
----
-
-## Repository Structure
-
-- `configs/` - Experiment configs
-  - `base.yaml` - Base experiment configuration
-  - `test.yaml` - Script testing configuration
-- `data/` - Postprocessed PolitiFact data obtained from Kaggle
-- `src/`
-  - `entrypoint.sh` - Container entrypoint
-  - `finetune.py` - Training entrypoint (QLoRA fine-tuning, MLflow logging)
-  - `zero_shot_eval.py` - Baseline model testing (metrics, confusion matrix, etc.)
-- `notebooks/` - (not committed) Exploration / EDA / debugging
-- `scripts/` - (not committed) Exploration / debugging
-- `models/` - (not committed) saved model checkpoints
-- `results/` - (not committed) evaluation artifacts
-- `logs/` - (not committed) log files
-- `mlruns/` - (not committed) mlflow logs and artifacts
-- `Dockerfile`
-- `Makefile`
-- `pyproject.toml`
-- `requirements.txt`
-- `spot-spec.json` - (not committed) EC2 spot instance config
-- `uv.lock`
-- `README.md`
+Source: [PolitiFact Fact Check Dataset on Kaggle](https://www.kaggle.com/datasets/rmisra/politifact-fact-check-dataset). Original ratings and article text belong to PolitiFact. This repo redistributes a postprocessed JSONL subset so the experiment can be reproduced. MIT license does not cover the data. 

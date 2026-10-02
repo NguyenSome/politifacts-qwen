@@ -1,5 +1,5 @@
-# --- Configuations base parameters---
-seed : 7
+# Reported Qwen2.5-1.5B run on the full split.
+seed: 7
 
 data:
   training: "data/train.json"
@@ -15,7 +15,6 @@ prompt:
     Statement: {statement}
     Answer with only the label, nothing else:
 
-# MLflow paramters
 mlflow:
   enable: true
   tracking_uri: "sqlite:///mlflow.db"

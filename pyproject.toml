@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aws-qwen"
+name = "politifact-qwen"
 version = "0.1.0"
-description = "Fine-tuning and deploying Qwen models on AWS with MLflow tracking"
+description = "QLoRA fine-tuning of Qwen2.5 to classify PolitiFact claims"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 authors = [{ name = "NguyenSome" }]
