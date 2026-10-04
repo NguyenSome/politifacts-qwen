@@ -19,7 +19,8 @@ mlflow.db
 mlruns/
 logs/
 models/
-results/
+results/*
+!results/summary.json
 *.db
 notebooks/
 scripts/

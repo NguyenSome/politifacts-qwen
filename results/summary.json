@@ -1,0 +1,444 @@
+{
+  "experiment": "qwen-politi-finetune-v1",
+  "status": "intermediate",
+  "question": "Can a 0.5B-1.5B causal LM recover PolitiFact's 6-way ordinal rating from the claim text alone?",
+  "scoring": {
+    "test": "First line of the generation, then the longest PolitiFact label that is a prefix of that line. Unrecognized strings count as incorrect for accuracy. MAE, within-1, macro-F1 on covered, and quadratic kappa use recognized predictions only.",
+    "ordinal_scale": [
+      "pants-fire",
+      "false",
+      "mostly-false",
+      "half-true",
+      "mostly-true",
+      "true"
+    ],
+    "validation": "Teacher-forced argmax over label-token positions. macro_f1 and cohen_kappa are computed only on strings that exactly match a label (recognized_ratio). Do not compare that macro_f1 to test accuracy."
+  },
+  "notes": [
+    "There is no zero-shot Qwen2.5-1.5B run. The matched before/after comparison is the 0.5B pair. The 1.5B numbers are the tuned model only.",
+    "Every test metric is aligned to data/test.json (4231 statements). For the zero-shot 0.5B file, only the first recorded prediction per statement is used; later appended passes are excluded.",
+    "Train-time eval_macro_f1 is computed only on recognized validation labels.",
+    "Tuned 1.5B generations usually continue after the label (for example 'mostly-false' then a newline and 'statement'). Exact string match on that file scores about 0.012. The test figures use prefix parsing.",
+    "Adapters, checkpoints, and raw prediction dumps are local only."
+  ],
+  "data": {
+    "source": "https://www.kaggle.com/datasets/rmisra/politifact-fact-check-dataset",
+    "train_rows": 16921,
+    "test_rows": 4231,
+    "validation_rows": 2539,
+    "validation_split": "15% of data/train.json, seed 7",
+    "labels": [
+      "pants-fire",
+      "false",
+      "mostly-false",
+      "half-true",
+      "mostly-true",
+      "true"
+    ],
+    "train_label_counts": {
+      "pants-fire": 2161,
+      "false": 4480,
+      "mostly-false": 2707,
+      "half-true": 2901,
+      "mostly-true": 2680,
+      "true": 1992
+    }
+  },
+  "baselines": {
+    "majority_class_test": {
+      "label": "false",
+      "n": 4231,
+      "accuracy": 0.270622,
+      "mae": 1.536043,
+      "within1": 0.570078
+    },
+    "zero_shot_qwen2.5_0.5B_test": {
+      "n": 4231,
+      "accuracy_overall": 0.203498,
+      "coverage": 0.763886,
+      "accuracy_on_covered": 0.266399,
+      "macro_f1_overall": 0.084974,
+      "macro_f1_on_covered": 0.092258,
+      "mae_on_covered": 1.581993,
+      "within1_on_covered": 0.569307,
+      "qwk_on_covered": 0.050694,
+      "per_class": {
+        "pants-fire": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 542
+        },
+        "false": {
+          "precision": 0.283737,
+          "recall": 0.716157,
+          "f1": 0.406444,
+          "support": 1145
+        },
+        "mostly-false": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 725
+        },
+        "half-true": {
+          "precision": 0.181818,
+          "recall": 0.002874,
+          "f1": 0.005658,
+          "support": 696
+        },
+        "mostly-true": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 652
+        },
+        "true": {
+          "precision": 0.119266,
+          "recall": 0.082803,
+          "f1": 0.097744,
+          "support": 471
+        }
+      },
+      "confusion": {
+        "pants-fire": {
+          "pants-fire": 0,
+          "false": 404,
+          "mostly-false": 0,
+          "half-true": 1,
+          "mostly-true": 0,
+          "true": 35,
+          "unrecognized": 102
+        },
+        "false": {
+          "pants-fire": 0,
+          "false": 820,
+          "mostly-false": 1,
+          "half-true": 1,
+          "mostly-true": 0,
+          "true": 73,
+          "unrecognized": 250
+        },
+        "mostly-false": {
+          "pants-fire": 1,
+          "false": 507,
+          "mostly-false": 0,
+          "half-true": 3,
+          "mostly-true": 0,
+          "true": 47,
+          "unrecognized": 167
+        },
+        "half-true": {
+          "pants-fire": 1,
+          "false": 434,
+          "mostly-false": 0,
+          "half-true": 2,
+          "mostly-true": 0,
+          "true": 71,
+          "unrecognized": 188
+        },
+        "mostly-true": {
+          "pants-fire": 0,
+          "false": 401,
+          "mostly-false": 0,
+          "half-true": 2,
+          "mostly-true": 0,
+          "true": 62,
+          "unrecognized": 187
+        },
+        "true": {
+          "pants-fire": 0,
+          "false": 324,
+          "mostly-false": 1,
+          "half-true": 2,
+          "mostly-true": 0,
+          "true": 39,
+          "unrecognized": 105
+        }
+      }
+    }
+  },
+  "runs": {
+    "tuned_qwen2.5_1.5B": {
+      "config": "configs/base.yaml",
+      "model_name": "Qwen/Qwen2.5-1.5B",
+      "qlora": {
+        "r": 8,
+        "alpha": 16,
+        "dropout": 0.05,
+        "bits": 4,
+        "quant_type": "nf4"
+      },
+      "epochs": 2,
+      "learning_rate": 0.0002,
+      "max_length": 256,
+      "train_batch_size": 2,
+      "gradient_accumulation_steps": 16,
+      "train_runtime_seconds": 8193.0331,
+      "train_loss_curve": [
+        {
+          "step": 100,
+          "epoch": 0.2225,
+          "loss": 1.3259
+        },
+        {
+          "step": 200,
+          "epoch": 0.445001,
+          "loss": 0.7977
+        },
+        {
+          "step": 300,
+          "epoch": 0.667501,
+          "loss": 0.7817
+        },
+        {
+          "step": 400,
+          "epoch": 0.890001,
+          "loss": 0.7731
+        },
+        {
+          "step": 500,
+          "epoch": 1.11125,
+          "loss": 0.7214
+        },
+        {
+          "step": 600,
+          "epoch": 1.333751,
+          "loss": 0.6887
+        },
+        {
+          "step": 700,
+          "epoch": 1.556251,
+          "loss": 0.6912
+        },
+        {
+          "step": 800,
+          "epoch": 1.778751,
+          "loss": 0.6848
+        },
+        {
+          "step": 900,
+          "epoch": 2.0,
+          "loss": 0.6725
+        }
+      ],
+      "mean_train_loss": 0.792972,
+      "validation": {
+        "n": 2539,
+        "accuracy": 0.337534,
+        "macro_f1_on_recognized": 0.672461,
+        "cohen_kappa_unweighted_on_recognized": 0.608224,
+        "recognized_ratio": 0.491926,
+        "eval_loss": 0.890723
+      },
+      "test": {
+        "n": 4231,
+        "accuracy_overall": 0.339163,
+        "coverage": 1.0,
+        "accuracy_on_covered": 0.339163,
+        "macro_f1_overall": 0.289175,
+        "macro_f1_on_covered": 0.289175,
+        "mae_on_covered": 1.07445,
+        "within1_on_covered": 0.739778,
+        "qwk_on_covered": 0.499777,
+        "per_class": {
+          "pants-fire": {
+            "precision": 0.516616,
+            "recall": 0.315498,
+            "f1": 0.391753,
+            "support": 542
+          },
+          "false": {
+            "precision": 0.438064,
+            "recall": 0.466376,
+            "f1": 0.451777,
+            "support": 1145
+          },
+          "mostly-false": {
+            "precision": 0.248555,
+            "recall": 0.415172,
+            "f1": 0.31095,
+            "support": 725
+          },
+          "half-true": {
+            "precision": 0.314286,
+            "recall": 0.015805,
+            "f1": 0.030096,
+            "support": 696
+          },
+          "mostly-true": {
+            "precision": 0.281516,
+            "recall": 0.558282,
+            "f1": 0.374293,
+            "support": 652
+          },
+          "true": {
+            "precision": 0.380282,
+            "recall": 0.11465,
+            "f1": 0.176183,
+            "support": 471
+          }
+        },
+        "confusion": {
+          "pants-fire": {
+            "pants-fire": 171,
+            "false": 260,
+            "mostly-false": 83,
+            "half-true": 0,
+            "mostly-true": 25,
+            "true": 3
+          },
+          "false": {
+            "pants-fire": 126,
+            "false": 534,
+            "mostly-false": 272,
+            "half-true": 3,
+            "mostly-true": 183,
+            "true": 27
+          },
+          "mostly-false": {
+            "pants-fire": 17,
+            "false": 189,
+            "mostly-false": 301,
+            "half-true": 10,
+            "mostly-true": 193,
+            "true": 15
+          },
+          "half-true": {
+            "pants-fire": 10,
+            "false": 98,
+            "mostly-false": 273,
+            "half-true": 11,
+            "mostly-true": 288,
+            "true": 16
+          },
+          "mostly-true": {
+            "pants-fire": 5,
+            "false": 72,
+            "mostly-false": 174,
+            "half-true": 10,
+            "mostly-true": 364,
+            "true": 27
+          },
+          "true": {
+            "pants-fire": 2,
+            "false": 66,
+            "mostly-false": 108,
+            "half-true": 1,
+            "mostly-true": 240,
+            "true": 54
+          }
+        }
+      },
+      "error_analysis": {
+        "half_true_support": 696,
+        "half_true_predicted_as_self": 11,
+        "half_true_predicted_as_immediate_neighbor": 561,
+        "half_true_immediate_neighbor_rate": 0.806034,
+        "off_by_one_share_of_errors": 0.606223
+      }
+    },
+    "tuned_qwen2.5_0.5B": {
+      "model_name": "Qwen/Qwen2.5-0.5B",
+      "test": {
+        "n": 4231,
+        "accuracy_overall": 0.323091,
+        "coverage": 1.0,
+        "accuracy_on_covered": 0.323091,
+        "macro_f1_overall": 0.260901,
+        "macro_f1_on_covered": 0.260901,
+        "mae_on_covered": 1.097613,
+        "within1_on_covered": 0.732215,
+        "qwk_on_covered": 0.486557,
+        "per_class": {
+          "pants-fire": {
+            "precision": 0.471545,
+            "recall": 0.321033,
+            "f1": 0.381998,
+            "support": 542
+          },
+          "false": {
+            "precision": 0.458911,
+            "recall": 0.375546,
+            "f1": 0.413064,
+            "support": 1145
+          },
+          "mostly-false": {
+            "precision": 0.246606,
+            "recall": 0.451034,
+            "f1": 0.318869,
+            "support": 725
+          },
+          "half-true": {
+            "precision": 0.333333,
+            "recall": 0.001437,
+            "f1": 0.002861,
+            "support": 696
+          },
+          "mostly-true": {
+            "precision": 0.270078,
+            "recall": 0.639571,
+            "f1": 0.379781,
+            "support": 652
+          },
+          "true": {
+            "precision": 0.346154,
+            "recall": 0.038217,
+            "f1": 0.068834,
+            "support": 471
+          }
+        },
+        "confusion": {
+          "pants-fire": {
+            "pants-fire": 174,
+            "false": 211,
+            "mostly-false": 112,
+            "half-true": 0,
+            "mostly-true": 45,
+            "true": 0
+          },
+          "false": {
+            "pants-fire": 141,
+            "false": 430,
+            "mostly-false": 333,
+            "half-true": 0,
+            "mostly-true": 233,
+            "true": 8
+          },
+          "mostly-false": {
+            "pants-fire": 24,
+            "false": 138,
+            "mostly-false": 327,
+            "half-true": 1,
+            "mostly-true": 232,
+            "true": 3
+          },
+          "half-true": {
+            "pants-fire": 12,
+            "false": 66,
+            "mostly-false": 277,
+            "half-true": 1,
+            "mostly-true": 330,
+            "true": 10
+          },
+          "mostly-true": {
+            "pants-fire": 8,
+            "false": 45,
+            "mostly-false": 169,
+            "half-true": 0,
+            "mostly-true": 417,
+            "true": 13
+          },
+          "true": {
+            "pants-fire": 10,
+            "false": 47,
+            "mostly-false": 108,
+            "half-true": 1,
+            "mostly-true": 287,
+            "true": 18
+          }
+        }
+      }
+    }
+  }
+}

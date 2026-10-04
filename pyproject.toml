@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "politifact-qwen"
+name = "aws-qwen"
 version = "0.1.0"
-description = "QLoRA fine-tuning of Qwen2.5 to classify PolitiFact claims"
+description = "Claim-only PolitiFact ordinal classification with Qwen2.5 QLoRA"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 authors = [{ name = "NguyenSome" }]
