@@ -81,13 +81,12 @@ flowchart LR
 
 
 
-## Next experiments
+## Potential next steps
 
-- Zero-shot Qwen2.5-1.5B on this test file and this parser, so model size and fine-tuning are separated for the larger model.
+- Train a classification head, or an encoder classifier, on the same splits.
 - Constrained decoding to the six labels, which removes the trailing-text failure.
 - An ordinal loss, or regression on the 6-point scale, aimed at the `half-true` collapse.
 - Condition the model on the fact-check article or cited evidence. Claim-only input is the ceiling this experiment measures.
-- Score validation with the same generation metric as the test set, during training.
 
 ---
 
